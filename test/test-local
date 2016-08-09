@@ -1,0 +1,31 @@
+#! /bin/bash
+
+# Pipe a WebHook HTTP request to this script to override the default of using ./sample-http-post
+
+src_dir=$(cd $(dirname $0) && pwd)
+
+# Require that the name of the service to test is provided
+while getopts ":n:" OPT; do
+    case $OPT in
+        n) name=$OPTARG ;;
+    esac
+done
+
+[[ -z $name ]] && echo "Must provide -n <name> option" >&2 && exit 1
+
+function log {
+    logger -t webhook.test.webhook-${name} -p user.info "$@" &>/dev/null
+}
+
+# Pull our configuration arguments from the installed xinetd service (if present)
+server_args=$*
+if [[ -f /etc/xinetd.d/webhook-${name} ]]; then
+    server_args=$(grep server_args /etc/xinetd.d/webhook-${name} | sed s/.*=//) &>/dev/null
+fi
+
+# Locate our request content
+[[ -t 0 ]] && request=$src_dir/sample-http-post || request=
+
+# Simulate the request
+log "Testing with server_args:${server_args}"
+cat $request | $src_dir/../server ${server_args}

@@ -1,0 +1,24 @@
+#! /bin/bash
+
+# Test your webhook endpoint by sending a sample request to it.
+# usage: test-server <webhook hostname> <webhook port>
+
+# Pipe a WebHook HTTP request to this script to override the default of using sample-http-post
+
+src_dir=$(cd $(dirname $0) && pwd)
+
+host=${1:-127.0.0.1}
+port=${2:-10000}
+
+# Create a tempfile to hold our response
+output=$(mktemp)
+trap "rm -f $output" EXIT
+
+# Locate our request content
+[[ -t 0 ]] && request=$src_dir/sample-http-post || request=
+
+# Send request and display response
+cat $request | nc $host $port | tee $output
+
+# Verify it was successful
+head -n1 $output | grep -q "HTTP/1.1 200 OK"

@@ -1,0 +1,20 @@
+service webhook-${name}
+{
+    type            = UNLISTED
+    socket_type     = stream
+    protocol        = tcp
+    user            = ${user:-webhook}
+    groups          = yes
+    wait            = no
+    disable         = no
+    port            = ${port:-10000}
+    log_type        = SYSLOG daemon info
+    log_on_success  = HOST PID EXIT
+    log_on_failure  = HOST ATTEMPT
+    server          = ${src_dir}/server
+    server_args     = -n ${name} ${capture_location} ${handler}
+    only_from       = 127.0.0.1
+
+    # Add additional IP addresses like so:
+    # only_from       += X.X.X.X
+}

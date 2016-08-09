@@ -1,0 +1,84 @@
+#! env bash
+
+while getopts "n:c:e:" OPT; do
+    case $OPT in
+        n) name=$OPTARG ;;
+        c) capture_file=$OPTARG ;;
+        e) handler=$OPTARG ;;
+    esac
+done
+shift $((OPTIND-1))
+
+[[ -z $name ]] && echo "Must provide -n <name> option" >&2 && exit 1
+
+function log {
+    # Log to syslog since stdout is used for response content
+    logger -t xinetd.webhook-${name} -p user.info "$@" &>/dev/null
+}
+
+capture_file=${capture_file:-/tmp/webhook-${name}.http}
+
+function read-http {
+    # Read in the full HTTP request
+
+    # We look for the Content-Length because the client
+    # may not send an EOF on the input so we have to be
+    # precise about how we read from stdin.
+    while IFS=$'\r\n' read -r line; do
+        echo -en "$line\r\n"
+        case $line in
+            Content-Length:*) content_length=$(cut -d ' ' -f 2 <<<$line);;
+            "") break;;
+        esac
+    done
+
+    if [[ -n $content_length ]]; then
+        read -n $content_length -r data
+        echo -n "$data"
+    fi
+}
+
+function reply-http {
+    # Send a 200 OK reply to the client
+    local data
+
+    read -r -d '' data
+
+    # Reply with correct headers and body
+    if [[ -n $data ]]; then
+        cat <<EOF
+HTTP/1.1 $*
+Content-Type: text/plain
+Content-Length: ${#data}
+
+$data
+EOF
+    else
+        cat <<EOF
+HTTP/1.1 $*
+
+EOF
+    fi
+}
+
+function reply-http-success {
+    reply-http "200 OK"
+}
+
+function reply-http-error {
+    reply-http "500 Internal Server Error"
+}
+
+# Capture the request to a file
+mkdir -p $(dirname $capture_file)
+read-http > $capture_file
+log "Saved request to $capture_file"
+
+# Respond to HTTP request
+if [[ -n $handler ]]; then
+    log "Sending request to $handler"
+    $handler <$capture_file | reply-http-success
+else
+    log "Sending generic 200 OK response"
+    echo "" | reply-http-success
+fi
